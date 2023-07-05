@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html><head>
+
+<meta charset="utf-8" />
+
+<meta name="viewport" content="width=device-width" />
+<meta name="color-scheme" content="light dark" />
+
+<style>
+:root {
+    font-family: -apple-system, Helvetica, Arial, sans-serif;
+    line-height: 1.75;
+}
+table {
+    border-collapse: collapse;
+}
+td, th {
+    border: thin solid;
+    padding: 0 0.5em;
+}
+</style>
+
+<title>Mesh Messaging Test</title>
+
+</head><body>
+
+<h1>Mesh Messaging Test</h1>
+
+<h2>Options</h2>
+
+<h3>Mesh network options</h3>
+
+<p>
+Field size <code>A&times;B</code>:
+<br />
+<input type="number" name="row" value="10" min="0" step="10" />
+by
+<input type="number" name="col" value="10" min="0" step="10" />
+</p>
+
+<p>
+User number <code>n</code>:
+<br />
+<input type="number" name="number" value="100" min="0" step="100" />
+</p>
+
+<p>
+Epoch number <code>T</code> (to run simulation for <code>T</code> epochs):
+<br />
+<input type="number" name="T" value="100" min="0" step="100" />
+</p>
+
+<p>
+Message rate <code>&lambda;</code> (to generate in expectation <code>&lambda;</code> new messages <em>per user per epoch</em>, with targets being random contacts in social network.):
+<br />
+<input type="number" name="pSend" value="0.1" min="0" />
+<br />
+Distribution:
+<br />
+<select name="send">
+    <option value="stable">stable</option>
+    <option value="poisson" selected>Poisson</option>
+</select>
+<br />
+<small>("stable": <code>&lfloor;&lambda;&rfloor;</code> new messages, and with probability <code>&lambda;-&lfloor;&lambda;&rfloor;</code> one extra new message.)</small>
+</p>
+
+<p>
+Move probability (for each user to move <em>independently</em> per epoch):
+<br />
+<input type="number" name="pMove" value="1" min="0" max="1" step="0.1" />
+<br />
+Move range <code>r</code> (to move by a random step with (&ell;<sub>&infin;</sub>) norm at most <code>r</code>, i.e., a random step in <code>[-r,r]&times;[-r,r]</code>):
+<br />
+<input type="number" name="dMove" value="1" min="1" />
+</p>
+
+<p>
+Connection range <code>d</code> (to establish connection and exchange messages with users within (&ell;<sub>&infin;</sub>) distance <code>d</code>):
+<br />
+<input type="number" name="dLink" value="1" min="0" />
+</p>
+
+<h3>Social network options</h3>
+
+<p>
+Random graph type:
+<br />
+<select name="graph">
+    <option value="ER">Erd&odblac;s-R&eacute;nyi</option>
+    <option value="WS" selected>Watts-Strogatz</option>
+</select>
+<br />
+Expected relative degree (<code>0</code> for empty graph and <code>1</code> for complete graph):
+<br />
+<input type="number" name="pDeg" value="0.1" min="0" max="1" step="0.1" />
+<br />
+Parameter <code>&beta;</code> for Watts-Strogatz graph (<code>0</code> for ring lattice and <code>1</code> for random graph):
+<br />
+<input type="number" name="beta" value="0.5" min="0" max="1" step="0.1" />
+</p>
+
+<h3>Protocol options</h3>
+
+<p>
+Max forwarding hop number:
+<br />
+<input type="number" name="nHop" value="5" min="1" />
+<br />
+Max forwarding repetition degree:
+<br />
+<input type="number" name="nRep" value="5" min="1" />
+</p>
+
+<p>
+Re-encryption:
+<br />
+<label><input type="checkbox" name="isEncrypting" checked> enable</label>
+<br />
+Re-encryption batching:
+<br />
+<label><input type="checkbox" name="batch" checked> enable</label>
+<br />
+Re-encryption hop number:
+<br />
+<select name="reHop">
+    <option value="min">min</option>
+    <option value="mean" selected>mean</option>
+    <option value="max">max</option>
+</select>
+over batch
+<br />
+Re-encryption repetition degree:
+<br />
+<select name="reRep">
+    <option value="min">min</option>
+    <option value="mean">mean</option>
+    <option value="max" selected>max</option>
+</select>
+over batch
+</p>
+
+<p>
+Session refresh on meeting:
+<br />
+<label><input type="checkbox" name="updateMeet" checked> enable</label>
+<br />
+Session restriction in social network:
+<br />
+<label><input type="checkbox" name="updateContactsOnly" checked> contacts-only</label>
+</p>
+
+<h2>Simulation <button id="button-run">Run</button> <progress id="progress-run"></progress></h2>
+
+<h3>Statistics</h3>
+
+<table id="stat"></table>
+
+<p>
+<small>(Meaning of list: [mean],[stddev],[min],[max].)</small>
+<br />
+<small>(For messages reaching hop limit, they might have other copies still on the way but are just counted as this category.)</small>
+</p>
+
+<h3>Message details</h3>
+
+<details>
+<summary>Expand Table</summary>
+<table id="msgs"></table>
+</details>
+
+<p>
+<small>(Only received messages.)</small>
+<br />
+<small>(A re-encryption <code>u:[l]</code> is created by user <code>u</code> for (recursive) message list <code>l</code>.)</small>
+</p>
+
+<h3>Re-encryption details</h3>
+
+<details>
+<summary>Expand Table</summary>
+<table id="encs"></table>
+</details>
+
+<p>
+<small>(Only re-encryptions involving received messages.)</small>
+</p>
+
+<h3>Social network details</h3>
+
+<details>
+<summary>Expand Table</summary>
+<table id="social"></table>
+</details>
+
+<script type="module">
+import Network from './Network.js';
+import Protocol from './Protocol.js';
+
+const sum = list => list.reduce((s, x) => s + x, 0);
+const mean = list => sum(list) / list.length;
+const sketch = list => {
+    const mean1 = mean(list);
+    const mean2 = mean(list.map(x => x ** 2));
+    const stddev = Math.sqrt(mean2 - mean1 ** 2);
+    const min = list.reduce((s, x) => Math.min(s, x), Infinity);
+    const max = list.reduce((s, x) => Math.max(s, x), -Infinity);
+    return [mean1, stddev, min, max].map(x => Math.round(x * 1e3) / 1e3);
+};
+
+document.getElementById('button-run').addEventListener('click', async () => {
+    document.getElementById('stat').innerHTML = '';
+    document.getElementById('msgs').innerHTML = '';
+    document.getElementById('encs').innerHTML = '';
+    document.getElementById('social').innerHTML = '';
+
+    const options = Object.fromEntries([].concat(
+        Array.from(document.querySelectorAll('input[type=number]'), input => [input.name, Number(input.value)]),
+        Array.from(document.querySelectorAll('input[type=checkbox]'), input => [input.name, input.checked]),
+        Array.from(document.querySelectorAll('select'), select => [select.name, select.value]),
+    ));
+    console.info('opt', options);
+
+    const net = new Network([options.row, options.col], options.number);
+    const prot = new Protocol(options.nHop, options.nRep, options.isEncrypting, options.batch, options.reHop, options.reRep, options.updateMeet, options.updateContactsOnly);
+
+    const graph = net.getSocialGraph(options.graph, options.pDeg, options.beta);
+    document.getElementById('social').innerHTML = `
+<tr>
+    <th>ID</th>
+    <th>Contacts</th>
+</tr>
+    ` + Array.from(graph, ([id, contacts]) => `
+<tr>
+    <td>${id}</td>
+    <td>${contacts} (${contacts.length})</td>
+</tr>
+    `).join('');
+
+    const msgIds = await net.run(prot, graph, options.T, options.send, options.pSend, options.pMove, options.dMove, options.dLink, document.getElementById('progress-run'));
+    const {log} = prot;
+    console.info('run', msgIds, log);
+
+    const encsRecvAll = log.recvDetail.map(message => message.encs);
+    const encsRecv = new Set(encsRecvAll.flat());
+
+    const stat = {
+        'Sent': msgIds.length,
+        '- Received': log.recv.size,
+        '- Delivery rate': Math.round(log.recv.size / msgIds.length * 1e3) / 1e3,
+        '- Reaching hop limit': msgIds.filter(id => !log.recv.has(id) && log.drop.has(id)).length,
+        '- Still on the way': msgIds.filter(id => !log.recv.has(id) && !log.drop.has(id)).length,
+        'Hop number': sketch(log.recvDetail.map(message => message.hops.length+1)),
+        'Latency': sketch(log.recvDetail.map(message => message.tRecv - message.tSend)),
+        'Re-encryption number': log.encs.length,
+        '- Number for received': encsRecv.size,
+        '- Number per received': sketch(encsRecvAll.map(encs => encs.length)),
+        'Re-encryption batch size': sketch(log.encs.map(enc => enc.size)),
+        '- Batch size for received': sketch(Array.from(encsRecv, enc => enc.size)),
+    };
+    document.getElementById('stat').innerHTML = Object.entries(stat).map(([key, value]) => `<tr><td>${key}</td><td>${value}</td></tr>`).join('');
+
+    document.getElementById('msgs').innerHTML = `
+<tr>
+    <th>ID</th>
+    <th>Sending Epoch</th>
+    <th>Source</th>
+    <th>Hops</th>
+    <th>Target</th>
+    <th>Receiving Epoch</th>
+    <th>Re-encryptions</th>
+</tr>
+    ` + log.recvDetail.map(message => `
+<tr>
+    <td>${message.id}</td>
+    <td>${message.tSend}</td>
+    <td>${message.source.id}</td>
+    <td>${message.hops.map(user => user.id)}</td>
+    <td>${message.target.id}</td>
+    <td>${message.tRecv}</td>
+    <td>${message.encs.map(enc => enc.id).join('<br />')}</td>
+</tr>
+    `).join('');
+
+    document.getElementById('encs').innerHTML = `
+<tr>
+    <th>Epoch</th>
+    <th>Creator</th>
+    <th>Target</th>
+    <th>Batch</th>
+</tr>
+    ` + Array.from(encsRecv, enc => `
+<tr>
+    <td>${enc.timestamp}</td>
+    <td>${enc.source.id}</td>
+    <td>${enc.target.id}</td>
+    <td>${enc.batch.map(({message}) => message.id)} (${enc.size})</td>
+</tr>
+    `).join('');
+});
+document.getElementById('button-run').click();
+</script>
+
+</body></html>
