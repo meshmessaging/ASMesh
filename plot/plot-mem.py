@@ -2,6 +2,10 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 
+# avoid Type 3 font
+plt.rcParams['ps.fonttype'] = 42
+plt.rcParams['pdf.fonttype'] = 42
+
 def plot(var, label):
     data = json.load(open('out/%s.json' % var))
     key = 't'
